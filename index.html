@@ -88,12 +88,31 @@ async function pdfText(file){
   return text;
 }
 function extractAfter(label,text){ const r=new RegExp(label+'\\s*:?\\s*([^\\n]+)','i'); const m=text.match(r); return m?m[1].trim():''; }
+function cleanDriverName(name){
+  return String(name||'')
+    .replace(/\s+/g,' ')
+    .replace(/\b(Week reference|From|To|Station|Invoice To|Delivery Invoice)\b.*$/i,'')
+    .trim();
+}
 function extractIntelcom(text, fileName){
   let driverCode='', driverName='';
-  let m = text.match(/Driver:\s*([A-Z0-9]{5,12})\s+([A-Za-zÀ-ÿ'’\- ]+?)\s+Invoice To:/i);
-  if(!m) m = text.match(/([A-Z][0-9A-Z]{5,12})\s+([A-Za-zÀ-ÿ'’\- ]{3,60})\s+Invoice To:/i);
-  if(m){driverCode=m[1].trim(); driverName=m[2].replace(/\s+/g,' ').trim();}
-  else { const fm=fileName.match(/(C\dX\d+|[A-Z0-9]{7,})/i); driverCode=fm?fm[1]:''; driverName=fileName.replace(/\.pdf$/i,''); }
+  // Intelcom écrit souvent: Driver: C0V3493 Mohammed Arkat Week reference: 2025-48
+  // Il faut donc arrêter le nom AVANT "Week reference", pas avant "Invoice To".
+  let m = text.match(/Driver:\s*([A-Z0-9]{5,12})\s+(.+?)\s+Week reference:/i);
+  if(!m) m = text.match(/Driver:\s*([A-Z0-9]{5,12})\s+(.+?)\s+From:/i);
+  if(!m) m = text.match(/Driver:\s*([A-Z0-9]{5,12})\s+(.+?)\s+Invoice To:/i);
+  // Plan B: code + nom juste avant Week reference
+  if(!m) m = text.match(/([A-Z][0-9A-Z]{5,12})\s+([A-Za-zÀ-ÿ'’\- ]{3,80})\s+Week reference:/i);
+  if(m){
+    driverCode=m[1].trim();
+    driverName=cleanDriverName(m[2]);
+  } else {
+    // Depuis le nom du fichier on peut récupérer seulement le code/référence.
+    // Ne pas mettre le nom du fichier dans le champ Nom.
+    const fm=fileName.match(/(C[0-9A-Z]{5,12})/i);
+    driverCode=fm?fm[1].toUpperCase():'';
+    driverName='';
+  }
   const weekMatch = text.match(/Week reference:\s*([0-9\-]+)/i);
   const fromMatch = text.match(/From:\s*(\d{4}-\d{2}-\d{2})/i);
   const toMatch = text.match(/To:\s*(\d{4}-\d{2}-\d{2})/i);
