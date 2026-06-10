@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Intelcom - Relevés Chauffeurs</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    body{font-family:Arial,sans-serif;background:#f4f4f4;margin:0;color:#111}.wrap{max-width:1150px;margin:auto;padding:22px}h1{margin:0 0 10px}.card{background:#fff;border-radius:14px;padding:18px;margin:14px 0;box-shadow:0 2px 10px #0001}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat{background:#111;color:white;border-radius:12px;padding:14px}.stat b{font-size:22px;display:block;margin-top:6px}label{font-weight:bold;font-size:13px}input,select{width:100%;padding:10px;margin-top:6px;border:1px solid #ccc;border-radius:8px;box-sizing:border-box}button{background:#111;color:white;border:0;border-radius:10px;padding:11px 14px;cursor:pointer;margin:5px 5px 5px 0}button.secondary{background:#555}button.danger{background:#a11}table{width:100%;border-collapse:collapse;background:white}th,td{border-bottom:1px solid #ddd;padding:10px;text-align:left;font-size:14px}th{background:#111;color:white}.small{font-size:12px;color:#666}.ok{color:green;font-weight:bold}.warn{color:#b36b00;font-weight:bold}@media(max-width:800px){.grid{grid-template-columns:1fr}table{font-size:12px}th,td{padding:6px}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Relevés chauffeurs Intelcom</h1>
+  <div class="small">Importe plusieurs PDF Intelcom. L’app génère un relevé par chauffeur + un ZIP complet.</div>
+
+  <div class="card">
+    <h3>Paramètres broker</h3>
+    <div class="grid">
+      <div><label>Commission broker (%)</label><input id="commission" type="number" value="25" step="0.01"></div>
+      <div><label>Frais fixe par chauffeur ($)</label><input id="fixedFee" type="number" value="60" step="0.01"></div>
+      <div><label>Nom compagnie broker</label><input id="company" value="9486-5482 QUÉBEC INC"></div>
+      <div><label>Mode calcul</label><select id="calcMode"><option value="invoice">Sur Total invoice</option><option value="subtotal">Sur sous-total avant frais Intelcom</option></select></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Importer PDF Intelcom</h3>
+    <input id="pdfFiles" type="file" multiple accept="application/pdf">
+    <button onclick="importPDFs()">Importer et lire</button>
+    <button class="secondary" onclick="saveData()">Sauvegarder</button>
+    <button class="danger" onclick="clearData()">Vider</button>
+    <div id="status" class="small"></div>
+  </div>
+
+  <div class="grid">
+    <div class="stat">Total Intelcom<b id="totalIntelcom">0.00 $</b></div>
+    <div class="stat">Commission broker<b id="totalCommission">0.00 $</b></div>
+    <div class="stat">Frais fixes<b id="totalFees">0.00 $</b></div>
+    <div class="stat">Total chauffeurs<b id="totalDrivers">0.00 $</b></div>
+  </div>
+
+  <div class="card">
+    <h3>Chauffeurs détectés</h3>
+    <button onclick="generateAllZip()">Télécharger ZIP de tous les relevés</button>
+    <button class="secondary" onclick="exportCSV()">Exporter résumé CSV</button>
+    <table>
+      <thead><tr><th>Chauffeur</th><th>Période</th><th>Colis</th><th>Total Intelcom</th><th>Commission</th><th>Frais</th><th>Déduction</th><th>Avance</th><th>Net chauffeur</th><th>Action</th></tr></thead>
+      <tbody id="driversBody"></tbody>
+    </table>
+  </div>
+</div>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+let drivers = JSON.parse(localStorage.getItem('intelcomDriversBatch') || '[]');
+const money = n => (Number(n)||0).toFixed(2)+' $';
+function parseMoney(s){return Number(String(s||'').replace(/[^0-9.-]/g,''))||0}
+async function pdfText(file){
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+  let text='';
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p); const content=await page.getTextContent();
+    text += content.items.map(i=>i.str).join(' ')+'\n';
+  }
+  return text;
+}
+function extractIntelcom(text, fileName){
+  const driverMatch = text.match(/Driver:\s*([A-Z0-9]+\s+[^\n]+?)\s+Invoice To:/i) || text.match(/Driver:\s*([A-Z0-9]+\s+.*?)\s+Week reference:/i);
+  const weekMatch = text.match(/Week reference:\s*([0-9\-]+)/i);
+  const fromMatch = text.match(/From:\s*(\d{4}-\d{2}-\d{2})/i);
+  const toMatch = text.match(/To:\s*(\d{4}-\d{2}-\d{2})/i);
+  const totalInvoiceMatch = text.match(/Total invoice\s*\$?([0-9,]+\.\d{2})/i);
+  const totalLineMatch = text.match(/Total\s+0\s+([0-9]+)\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.?\d*)/i);
+  const parcels = totalLineMatch ? Number(totalLineMatch[1]) : 0;
+  const subtotal = totalLineMatch ? parseMoney(totalLineMatch[2]) : 0;
+  const fsc = totalLineMatch ? parseMoney(totalLineMatch[3]) : 0;
+  const invoice = totalInvoiceMatch ? parseMoney(totalInvoiceMatch[1]) : (subtotal+fsc);
+  const dayRows=[];
+  const dayRegex = /(202\d-\d{2}-\d{2})\s+0\s+([0-9]+)\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})/g;
+  let m; while((m=dayRegex.exec(text))!==null){dayRows.push({date:m[1], parcels:Number(m[2]), amount:parseMoney(m[6])});}
+  return {id:Date.now()+Math.random(), fileName, driver:(driverMatch?driverMatch[1].trim():fileName.replace('.pdf','')), week:weekMatch?weekMatch[1]:'', from:fromMatch?fromMatch[1]:'', to:toMatch?toMatch[1]:'', parcels, subtotal, fsc, invoice, deduction:0, advance:0, dayRows};
+}
+async function importPDFs(){
+  const files=[...document.getElementById('pdfFiles').files]; if(!files.length) return alert('Choisis au moins un PDF.');
+  document.getElementById('status').textContent='Lecture en cours...';
+  for(const f of files){ try{ const t=await pdfText(f); drivers.push(extractIntelcom(t,f.name)); }catch(e){alert('Erreur avec '+f.name+': '+e.message)} }
+  saveData(); render(); document.getElementById('status').textContent=files.length+' PDF importé(s).';
+}
+function calc(d){
+  const base = document.getElementById('calcMode').value==='subtotal'?d.subtotal:d.invoice;
+  const rate=Number(document.getElementById('commission').value)||0, fee=Number(document.getElementById('fixedFee').value)||0;
+  const commission=base*rate/100, net=base-commission-fee-(Number(d.deduction)||0)-(Number(d.advance)||0);
+  return {base,commission,fee,net};
+}
+function render(){
+  const body=document.getElementById('driversBody'); body.innerHTML='';
+  let ti=0,tc=0,tf=0,td=0;
+  drivers.forEach((d,i)=>{const c=calc(d); ti+=c.base; tc+=c.commission; tf+=c.fee; td+=c.net;
+    body.innerHTML+=`<tr><td><input value="${d.driver}" onchange="drivers[${i}].driver=this.value;saveData()"></td><td>${d.from} au ${d.to}<br><span class="small">${d.week}</span></td><td>${d.parcels}</td><td>${money(c.base)}</td><td>${money(c.commission)}</td><td>${money(c.fee)}</td><td><input type="number" value="${d.deduction}" onchange="drivers[${i}].deduction=Number(this.value);saveData();render()"></td><td><input type="number" value="${d.advance}" onchange="drivers[${i}].advance=Number(this.value);saveData();render()"></td><td><b>${money(c.net)}</b></td><td><button onclick="downloadOne(${i})">PDF</button><button class="danger" onclick="removeDriver(${i})">X</button></td></tr>`;
+  });
+  document.getElementById('totalIntelcom').textContent=money(ti);document.getElementById('totalCommission').textContent=money(tc);document.getElementById('totalFees').textContent=money(tf);document.getElementById('totalDrivers').textContent=money(td);
+}
+function buildPdf(d){
+  const {jsPDF}=window.jspdf; const doc=new jsPDF(); const c=calc(d); const company=document.getElementById('company').value;
+  doc.setFontSize(30); doc.text('RELEVÉ DE PAIEMENT',20,25); doc.setFontSize(10); doc.text('Fait le '+new Date().toLocaleDateString('fr-CA'),20,38); doc.text('Période : '+d.from+' au '+d.to,20,45);
+  doc.line(20,55,190,55); doc.setFontSize(11); doc.text(company,20,68); doc.text('Intelcom / Broker',20,75); doc.text('À L’ATTENTION DE',130,68); doc.text(d.driver,130,75); doc.text('Semaine : '+d.week,130,82);
+  let y=100; doc.setFillColor(20,20,20); doc.setTextColor(255); doc.rect(20,y,170,10,'F'); doc.text('DATE',25,y+7); doc.text('COLIS',80,y+7); doc.text('MONTANT',145,y+7); doc.setTextColor(0); y+=16;
+  const rows=(d.dayRows&&d.dayRows.length?d.dayRows:[{date:d.from,parcels:d.parcels,amount:c.base}]); rows.slice(0,12).forEach(r=>{doc.text(String(r.date),25,y); doc.text(String(r.parcels),85,y); doc.text(money(r.amount),145,y); y+=8;});
+  y+=8; doc.text('Total Intelcom : '+money(c.base),120,y); y+=8; doc.text('Commission broker : '+money(c.commission),120,y); y+=8; doc.text('Frais fixe : '+money(c.fee),120,y); y+=8; doc.text('Déduction : '+money(d.deduction),120,y); y+=8; doc.text('Avance : '+money(d.advance),120,y); y+=10; doc.setFillColor(20,20,20); doc.setTextColor(255); doc.rect(105,y,85,12,'F'); doc.text('NET CHAUFFEUR : '+money(c.net),112,y+8); doc.setTextColor(0);
+  doc.setFontSize(9); doc.text('Règlement : Par virement bancaire',20,270); doc.text('Document généré automatiquement selon le PDF Intelcom importé.',20,278);
+  return doc;
+}
+function downloadOne(i){buildPdf(drivers[i]).save('releve_'+drivers[i].driver.replace(/[^a-z0-9]/gi,'_')+'.pdf')}
+async function generateAllZip(){ if(!drivers.length)return alert('Aucun chauffeur.'); const zip=new JSZip(); drivers.forEach(d=>{const pdf=buildPdf(d).output('blob'); zip.file('releve_'+d.driver.replace(/[^a-z0-9]/gi,'_')+'.pdf',pdf);}); const blob=await zip.generateAsync({type:'blob'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='releves_chauffeurs.zip'; a.click(); }
+function exportCSV(){let csv='Chauffeur,Periode,Colis,Total Intelcom,Commission,Frais,Deduction,Avance,Net\n'; drivers.forEach(d=>{const c=calc(d);csv+=`"${d.driver}","${d.from} au ${d.to}",${d.parcels},${c.base.toFixed(2)},${c.commission.toFixed(2)},${c.fee.toFixed(2)},${d.deduction},${d.advance},${c.net.toFixed(2)}\n`;}); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='resume_broker.csv'; a.click();}
+function saveData(){localStorage.setItem('intelcomDriversBatch',JSON.stringify(drivers));}
+function clearData(){if(confirm('Vider tous les chauffeurs?')){drivers=[];saveData();render();}}
+function removeDriver(i){drivers.splice(i,1);saveData();render();}
+document.getElementById('commission').onchange=render;document.getElementById('fixedFee').onchange=render;document.getElementById('calcMode').onchange=render;render();
+</script>
+</body>
+</html>
