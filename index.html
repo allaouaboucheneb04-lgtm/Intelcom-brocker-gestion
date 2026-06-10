@@ -82,8 +82,23 @@ async function pdfText(file){
   const pdf = await pdfjsLib.getDocument({data:buf}).promise;
   let text='';
   for(let p=1;p<=pdf.numPages;p++){
-    const page=await pdf.getPage(p); const content=await page.getTextContent();
-    text += content.items.map(i=>i.str).join(' ')+'\n';
+    const page=await pdf.getPage(p);
+    const content=await page.getTextContent();
+    // IMPORTANT: garder les lignes du PDF. Si on colle tout en une seule ligne,
+    // le nom chauffeur est perdu entre Driver / Week reference / From.
+    const items = content.items
+      .filter(i => String(i.str || '').trim())
+      .map(i => ({str:String(i.str).trim(), x:i.transform[4], y:Math.round(i.transform[5])}));
+    const lines = {};
+    for(const it of items){
+      const key = Object.keys(lines).find(k => Math.abs(Number(k)-it.y) <= 2) || it.y;
+      if(!lines[key]) lines[key]=[];
+      lines[key].push(it);
+    }
+    Object.keys(lines).sort((a,b)=>Number(b)-Number(a)).forEach(k=>{
+      text += lines[k].sort((a,b)=>a.x-b.x).map(i=>i.str).join(' ') + '\n';
+    });
+    text += '\n';
   }
   return text;
 }
@@ -94,29 +109,64 @@ function cleanDriverName(name){
     .replace(/\b(Week reference|From|To|Station|Invoice To|Delivery Invoice)\b.*$/i,'')
     .trim();
 }
+function getLineValue(lines, label){
+  for(let i=0;i<lines.length;i++){
+    const line = lines[i].trim();
+    const re = new RegExp('^'+label+'\\s*:?\\s*(.*)$','i');
+    const m=line.match(re);
+    if(m){
+      const rest=(m[1]||'').trim();
+      if(rest) return rest;
+      for(let j=i+1;j<Math.min(i+4,lines.length);j++){
+        const v=lines[j].trim();
+        if(v && !/^(Week reference|From|To|Station|Invoice To|Delivery Invoice)\b/i.test(v)) return v;
+      }
+    }
+  }
+  return '';
+}
+function cleanDriverName(name){
+  return String(name||'')
+    .replace(/\s+/g,' ')
+    .replace(/\b(Week reference|From|To|Station|Invoice To|Delivery Invoice|Transaction summary)\b.*$/i,'')
+    .trim();
+}
+function splitDriver(raw){
+  raw = cleanDriverName(raw);
+  const m = raw.match(/\b(C[0-9A-Z]{5,12})\b\s*(.*)$/i);
+  if(m) return {code:m[1].toUpperCase(), name:cleanDriverName(m[2])};
+  return {code:'', name:cleanDriverName(raw)};
+}
 function extractIntelcom(text, fileName){
+  const lines = text.split(/\n+/).map(l=>l.trim()).filter(Boolean);
   let driverCode='', driverName='';
-  // Intelcom écrit souvent: Driver: C0V3493 Mohammed Arkat Week reference: 2025-48
-  // Il faut donc arrêter le nom AVANT "Week reference", pas avant "Invoice To".
-  let m = text.match(/Driver:\s*([A-Z0-9]{5,12})\s+(.+?)\s+Week reference:/i);
-  if(!m) m = text.match(/Driver:\s*([A-Z0-9]{5,12})\s+(.+?)\s+From:/i);
-  if(!m) m = text.match(/Driver:\s*([A-Z0-9]{5,12})\s+(.+?)\s+Invoice To:/i);
-  // Plan B: code + nom juste avant Week reference
-  if(!m) m = text.match(/([A-Z][0-9A-Z]{5,12})\s+([A-Za-zÀ-ÿ'’\- ]{3,80})\s+Week reference:/i);
-  if(m){
-    driverCode=m[1].trim();
-    driverName=cleanDriverName(m[2]);
-  } else {
-    // Depuis le nom du fichier on peut récupérer seulement le code/référence.
-    // Ne pas mettre le nom du fichier dans le champ Nom.
+
+  // Méthode principale: ligne Driver ou ligne juste après Driver.
+  const rawDriver = getLineValue(lines, 'Driver');
+  if(rawDriver){
+    const d = splitDriver(rawDriver);
+    driverCode = d.code;
+    driverName = d.name;
+  }
+
+  // Méthode secours: parfois le lecteur met "Driver: C0V3493 Mohammed Arkat Week reference:" sur une seule ligne.
+  if(!driverName){
+    let m = text.match(/Driver\s*:?\s*(C[0-9A-Z]{5,12})\s+([A-Za-zÀ-ÿ'’\- ]{2,80}?)(?=\s+(Week reference|From|To|Station|Invoice To|Delivery Invoice)|\n)/i);
+    if(!m) m = text.match(/\b(C[0-9A-Z]{5,12})\s+([A-Za-zÀ-ÿ'’\- ]{2,80})\s+Week reference\b/i);
+    if(m){ driverCode=m[1].toUpperCase(); driverName=cleanDriverName(m[2]); }
+  }
+
+  // Dernier secours: code dans le fichier seulement. Ne jamais mettre la référence fichier dans le nom.
+  if(!driverCode){
     const fm=fileName.match(/(C[0-9A-Z]{5,12})/i);
     driverCode=fm?fm[1].toUpperCase():'';
-    driverName='';
   }
-  const weekMatch = text.match(/Week reference:\s*([0-9\-]+)/i);
-  const fromMatch = text.match(/From:\s*(\d{4}-\d{2}-\d{2})/i);
-  const toMatch = text.match(/To:\s*(\d{4}-\d{2}-\d{2})/i);
-  const stationMatch = text.match(/Station:\s*([A-Z0-9]+)/i);
+
+  const week = getLineValue(lines,'Week reference') || ((text.match(/Week reference\s*:?\s*([0-9\-]+)/i)||[])[1]||'');
+  const from = getLineValue(lines,'From') || ((text.match(/From\s*:?\s*(\d{4}-\d{2}-\d{2})/i)||[])[1]||'');
+  const to = getLineValue(lines,'To') || ((text.match(/To\s*:?\s*(\d{4}-\d{2}-\d{2})/i)||[])[1]||'');
+  const station = getLineValue(lines,'Station') || ((text.match(/Station\s*:?\s*([A-Z0-9]+)/i)||[])[1]||'');
+
   const totalInvoiceMatch = text.match(/Total invoice\s*\$?([0-9,]+\.\d{2})/i);
   const totalLineMatch = text.match(/Total\s+0\s+([0-9]+)\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.?\d*)/i);
   const parcels = totalLineMatch ? Number(totalLineMatch[1]) : 0;
@@ -125,9 +175,10 @@ function extractIntelcom(text, fileName){
   const invoice = totalInvoiceMatch ? parseMoney(totalInvoiceMatch[1]) : (subtotal+fsc);
   const dayRows=[];
   const dayRegex = /(202\d-\d{2}-\d{2})\s+0\s+([0-9]+)\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})/g;
+  let m;
   while((m=dayRegex.exec(text))!==null){dayRows.push({date:m[1], parcels:Number(m[2]), amount:parseMoney(m[6])});}
   const saved = JSON.parse(localStorage.getItem('driverInfo_'+(driverCode||driverName)) || '{}');
-  return {id:Date.now()+Math.random(), fileName, driverCode, driverName, driverId:saved.driverId||'', driverAddress:saved.driverAddress||'', driverEmail:saved.driverEmail||'', driverPhone:saved.driverPhone||'', week:weekMatch?weekMatch[1]:'', from:fromMatch?fromMatch[1]:'', to:toMatch?toMatch[1]:'', station:stationMatch?stationMatch[1]:'', parcels, subtotal, fsc, invoice, deduction:0, advance:0, dayRows};
+  return {id:Date.now()+Math.random(), fileName, driverCode, driverName, driverId:saved.driverId||'', driverAddress:saved.driverAddress||'', driverEmail:saved.driverEmail||'', driverPhone:saved.driverPhone||'', week, from, to, station, parcels, subtotal, fsc, invoice, deduction:0, advance:0, dayRows};
 }
 async function importPDFs(){
   const files=[...byId('pdfFiles').files]; if(!files.length) return alert('Choisis au moins un PDF.');
