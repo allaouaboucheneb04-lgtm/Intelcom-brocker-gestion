@@ -38,6 +38,7 @@ G2G 1B8</textarea>
       <div><label>Frais fixe par chauffeur ($)</label><input id="fixedFee" type="number" value="60" step="0.01"></div>
       <div><label>Mode calcul</label><select id="calcMode"><option value="invoice">Sur Total invoice</option><option value="subtotal">Sur sous-total avant frais Intelcom</option></select></div>
       <div><label>Titre du PDF</label><input id="pdfTitle" value="FACTURE"></div>
+      <div><label>Détails colis dans PDF</label><select id="includeParcelDetails"><option value="yes">Oui</option><option value="no">Non</option></select></div>
     </div>
   </div>
 
@@ -76,8 +77,8 @@ let broker = JSON.parse(localStorage.getItem('intelcomBrokerV2') || '{}');
 const money = n => (Number(n)||0).toFixed(2)+' $';
 function parseMoney(s){return Number(String(s||'').replace(/[^0-9.-]/g,''))||0}
 function byId(id){return document.getElementById(id)}
-function loadBroker(){['brokerCompany','brokerStation','payTo','brokerEmail','brokerPhone','paymentMethod','brokerAddress','commission','fixedFee','calcMode','pdfTitle'].forEach(id=>{if(broker[id]!==undefined)byId(id).value=broker[id]})}
-function collectBroker(){['brokerCompany','brokerStation','payTo','brokerEmail','brokerPhone','paymentMethod','brokerAddress','commission','fixedFee','calcMode','pdfTitle'].forEach(id=>broker[id]=byId(id).value)}
+function loadBroker(){['brokerCompany','brokerStation','payTo','brokerEmail','brokerPhone','paymentMethod','brokerAddress','commission','fixedFee','calcMode','pdfTitle','includeParcelDetails'].forEach(id=>{if(broker[id]!==undefined)byId(id).value=broker[id]})}
+function collectBroker(){['brokerCompany','brokerStation','payTo','brokerEmail','brokerPhone','paymentMethod','brokerAddress','commission','fixedFee','calcMode','pdfTitle','includeParcelDetails'].forEach(id=>broker[id]=byId(id).value)}
 async function pdfText(file){
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({data:buf}).promise;
@@ -188,8 +189,18 @@ function extractIntelcom(text, fileName){
   const dayRegex = /(202\d-\d{2}-\d{2})\s+0\s+([0-9]+)\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})/g;
   let m;
   while((m=dayRegex.exec(text))!==null){dayRows.push({date:m[1], parcels:Number(m[2]), amount:parseMoney(m[6])});}
+  const parcelDetails=[];
+  const seenDetails = new Set();
+  for(const line of lines){
+    const pm = line.match(/^(202\d-\d{2}-\d{2})\s+(DELIVERY|FLEX|RETNXTDAY|RETURN|PICKUP|MISSORT|CANCEL[^\s]*)\s+([A-Z0-9]+)\s+([A-Z]\d[A-Z]\d[A-Z]\d)\s+(ZONE_[A-Z])\s+(.+?)\s+([0-9.]+)\s+LB\s+\$?([0-9,]+\.\d{2})$/i);
+    if(pm){
+      const detail = {date:pm[1], service:pm[2], station:pm[3], postal:pm[4], zone:pm[5], tracking:pm[6].replace(/\s+/g,''), weight:pm[7]+' LB', amount:parseMoney(pm[8])};
+      const key = detail.date+'|'+detail.tracking+'|'+detail.amount;
+      if(!seenDetails.has(key)){seenDetails.add(key); parcelDetails.push(detail);}
+    }
+  }
   const saved = JSON.parse(localStorage.getItem('driverInfo_'+(driverCode||driverName)) || '{}');
-  return {id:Date.now()+Math.random(), fileName, driverCode, driverName, driverId:saved.driverId||'', driverAddress:saved.driverAddress||'', driverEmail:saved.driverEmail||'', driverPhone:saved.driverPhone||'', week, from, to, station, parcels, subtotal, fsc, invoice, deduction:0, advance:0, dayRows};
+  return {id:Date.now()+Math.random(), fileName, driverCode, driverName, driverId:saved.driverId||'', driverAddress:saved.driverAddress||'', driverEmail:saved.driverEmail||'', driverPhone:saved.driverPhone||'', week, from, to, station, parcels, subtotal, fsc, invoice, deduction:0, advance:0, dayRows, parcelDetails};
 }
 async function importPDFs(){
   const files=[...byId('pdfFiles').files];
@@ -240,7 +251,7 @@ function render(){
         <label>Adresse</label><input value="${d.driverAddress||''}" onchange="updateDriver(${i},'driverAddress',this.value)">
         <label>Email / téléphone</label><input value="${d.driverEmail||''}" placeholder="email" onchange="updateDriver(${i},'driverEmail',this.value)"><input value="${d.driverPhone||''}" placeholder="téléphone" onchange="updateDriver(${i},'driverPhone',this.value)">
       </td>
-      <td>${d.from} au ${d.to}<br><span class="small">Semaine ${d.week}<br>Station ${d.station||''}</span></td><td>${d.parcels}</td><td>${money(c.base)}</td><td>${money(c.commission)}</td><td>${money(c.fee)}</td>
+      <td>${d.from} au ${d.to}<br><span class="small">Semaine ${d.week}<br>Station ${d.station||''}<br>Détails colis ${d.parcelDetails?d.parcelDetails.length:0}</span></td><td>${d.parcels}</td><td>${money(c.base)}</td><td>${money(c.commission)}</td><td>${money(c.fee)}</td>
       <td><input type="number" value="${d.deduction}" onchange="drivers[${i}].deduction=Number(this.value);saveAll();render()"></td><td><input type="number" value="${d.advance}" onchange="drivers[${i}].advance=Number(this.value);saveAll();render()"></td><td><b>${money(c.net)}</b></td><td><button onclick="downloadOne(${i})">PDF</button><button class="danger" onclick="removeDriver(${i})">X</button></td></tr>`;
   });
   byId('totalIntelcom').textContent=money(ti);byId('totalCommission').textContent=money(tc);byId('totalFees').textContent=money(tf);byId('totalDrivers').textContent=money(td);
@@ -257,15 +268,44 @@ function buildPdf(d){
   const rows=(d.dayRows&&d.dayRows.length?d.dayRows:[{date:d.from,parcels:d.parcels,amount:c.base}]); rows.slice(0,9).forEach(r=>{doc.text(String(r.date),25,y); doc.text(String(r.parcels),83,y); doc.text(money(r.amount),145,y); y+=8;});
   y+=8; doc.text('Sous total Intelcom : '+money(c.base),115,y); y+=8; doc.text('Commission broker : '+money(c.commission),115,y); y+=8; doc.text('Frais broker : '+money(c.fee),115,y); y+=8; doc.text('Déduction : '+money(d.deduction),115,y); y+=8; doc.text('Avance : '+money(d.advance),115,y); y+=10; doc.setFillColor(20,20,20); doc.setTextColor(255); doc.rect(105,y,85,12,'F'); doc.text('TOTAL : '+money(c.net),125,y+8); doc.setTextColor(0);
   doc.setFontSize(9); doc.text('Paiement à l’ordre de : '+(broker.payTo||''),20,255); doc.text('Règlement : '+(broker.paymentMethod||''),20,263); doc.text((broker.brokerEmail||''),120,255); doc.text((broker.brokerPhone||''),120,263); doc.line(20,270,190,270); doc.setFontSize(10); doc.text('MERCI DE VOTRE CONFIANCE',75,282);
+
+  if((broker.includeParcelDetails||'yes')==='yes' && d.parcelDetails && d.parcelDetails.length){
+    const rows = d.parcelDetails;
+    const rowsPerPage = 36;
+    for(let start=0; start<rows.length; start+=rowsPerPage){
+      doc.addPage();
+      doc.setFontSize(16); doc.setFont(undefined,'bold');
+      doc.text('Détails des colis',20,18);
+      doc.setFontSize(9); doc.setFont(undefined,'normal');
+      doc.text((d.driverName||'')+'  '+(d.driverCode||''),20,25);
+      doc.text('Période : '+d.from+' au '+d.to,20,31);
+      doc.text('Page détails '+(Math.floor(start/rowsPerPage)+1)+' / '+Math.ceil(rows.length/rowsPerPage),150,25);
+      let yy=40;
+      doc.setFillColor(20,20,20); doc.setTextColor(255); doc.rect(10,yy,190,8,'F');
+      doc.text('Date',12,yy+6); doc.text('Service',37,yy+6); doc.text('Code postal',65,yy+6); doc.text('Zone',92,yy+6); doc.text('Tracking',113,yy+6); doc.text('Poids',165,yy+6); doc.text('Montant',183,yy+6);
+      doc.setTextColor(0); yy+=13; doc.setFontSize(7.2);
+      rows.slice(start,start+rowsPerPage).forEach(r=>{
+        doc.text(String(r.date||''),12,yy);
+        doc.text(String(r.service||''),37,yy);
+        doc.text(String(r.postal||''),65,yy);
+        doc.text(String(r.zone||''),92,yy);
+        let tr=String(r.tracking||''); if(tr.length>24) tr=tr.slice(0,24);
+        doc.text(tr,113,yy);
+        doc.text(String(r.weight||''),165,yy);
+        doc.text(money(r.amount),183,yy);
+        yy+=6;
+      });
+    }
+  }
   return doc;
 }
 function downloadOne(i){const n=(drivers[i].driverName||drivers[i].driverCode||'chauffeur').replace(/[^a-z0-9]/gi,'_'); buildPdf(drivers[i]).save('releve_'+n+'.pdf')}
 async function generateAllZip(){ if(!drivers.length)return alert('Aucun chauffeur.'); const zip=new JSZip(); drivers.forEach(d=>{const pdf=buildPdf(d).output('blob'); const n=(d.driverName||d.driverCode||'chauffeur').replace(/[^a-z0-9]/gi,'_'); zip.file('releve_'+n+'.pdf',pdf);}); const blob=await zip.generateAsync({type:'blob'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='releves_chauffeurs.zip'; a.click(); }
-function exportCSV(){let csv='Code,Chauffeur,ID,Adresse,Email,Telephone,Periode,Colis,Total Intelcom,Commission,Frais,Deduction,Avance,Net\n'; drivers.forEach(d=>{const c=calc(d);csv+=`"${d.driverCode}","${d.driverName}","${d.driverId}","${d.driverAddress}","${d.driverEmail}","${d.driverPhone}","${d.from} au ${d.to}",${d.parcels},${c.base.toFixed(2)},${c.commission.toFixed(2)},${c.fee.toFixed(2)},${d.deduction},${d.advance},${c.net.toFixed(2)}\n`;}); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='resume_broker.csv'; a.click();}
+function exportCSV(){let csv='Code,Chauffeur,ID,Adresse,Email,Telephone,Periode,Colis,Total Intelcom,Commission,Frais,Deduction,Avance,Net,Details colis\n'; drivers.forEach(d=>{const c=calc(d);csv+=`"${d.driverCode}","${d.driverName}","${d.driverId}","${d.driverAddress}","${d.driverEmail}","${d.driverPhone}","${d.from} au ${d.to}",${d.parcels},${c.base.toFixed(2)},${c.commission.toFixed(2)},${c.fee.toFixed(2)},${d.deduction},${d.advance},${c.net.toFixed(2)},${d.parcelDetails?d.parcelDetails.length:0}\n`;}); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='resume_broker.csv'; a.click();}
 function saveAll(){collectBroker(); localStorage.setItem('intelcomDriversBatchV2',JSON.stringify(drivers)); localStorage.setItem('intelcomBrokerV2',JSON.stringify(broker));}
 function clearData(){if(confirm('Vider tous les chauffeurs?')){drivers=[];saveAll();render();}}
 function removeDriver(i){drivers.splice(i,1);saveAll();render();}
-['brokerCompany','brokerStation','payTo','brokerEmail','brokerPhone','paymentMethod','brokerAddress','commission','fixedFee','calcMode','pdfTitle'].forEach(id=>{byId(id).onchange=()=>{saveAll();render();}});
+['brokerCompany','brokerStation','payTo','brokerEmail','brokerPhone','paymentMethod','brokerAddress','commission','fixedFee','calcMode','pdfTitle','includeParcelDetails'].forEach(id=>{byId(id).onchange=()=>{saveAll();render();}});
 loadBroker(); render();
 </script>
 </body>
