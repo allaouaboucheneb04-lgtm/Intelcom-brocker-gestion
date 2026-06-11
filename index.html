@@ -163,10 +163,20 @@ function extractIntelcom(text, fileName){
     driverCode=fm?fm[1].toUpperCase():'';
   }
 
-  const week = getLineValue(lines,'Week reference') || ((text.match(/Week reference\s*:?\s*([0-9\-]+)/i)||[])[1]||'');
-  const from = getLineValue(lines,'From') || ((text.match(/From\s*:?\s*(\d{4}-\d{2}-\d{2})/i)||[])[1]||'');
-  const to = getLineValue(lines,'To') || ((text.match(/To\s*:?\s*(\d{4}-\d{2}-\d{2})/i)||[])[1]||'');
-  const station = getLineValue(lines,'Station') || ((text.match(/Station\s*:?\s*([A-Z0-9]+)/i)||[])[1]||'');
+  const weekRaw = getLineValue(lines,'Week reference') || '';
+  const week = ((weekRaw.match(/[0-9]{4}-[0-9]{1,2}/)||[])[0]) || ((text.match(/Week reference\s*:?\s*([0-9]{4}-[0-9]{1,2})/i)||[])[1]||'');
+
+  // IMPORTANT: lire seulement la date YYYY-MM-DD après From et To.
+  // Certains PDF mettent l'adresse Intelcom sur la même ligne visuelle :
+  // From: 2025-11-24 1380, rue William / To: 2025-11-30 Suite 200.
+  // Avant, l'app prenait toute la ligne; maintenant elle garde seulement la date.
+  const fromRaw = getLineValue(lines,'From') || '';
+  const toRaw = getLineValue(lines,'To') || '';
+  const from = ((fromRaw.match(/\d{4}-\d{2}-\d{2}/)||[])[0]) || ((text.match(/From\s*:?\s*(\d{4}-\d{2}-\d{2})/i)||[])[1]||'');
+  const to = ((toRaw.match(/\d{4}-\d{2}-\d{2}/)||[])[0]) || ((text.match(/To\s*:?\s*(\d{4}-\d{2}-\d{2})/i)||[])[1]||'');
+
+  const stationRaw = getLineValue(lines,'Station') || '';
+  const station = ((stationRaw.match(/[A-Z0-9]{3,}/)||[])[0]) || ((text.match(/Station\s*:?\s*([A-Z0-9]+)/i)||[])[1]||'');
 
   const totalInvoiceMatch = text.match(/Total invoice\s*\$?([0-9,]+\.\d{2})/i);
   const totalLineMatch = text.match(/Total\s+0\s+([0-9]+)\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.\d{2})\s+\$?([0-9,]+\.?\d*)/i);
