@@ -35,7 +35,7 @@ G2G 1B8</textarea>
     <h3>Paramètres de calcul</h3>
     <div class="grid">
       <div><label>Commission broker (%)</label><input id="commission" type="number" value="25" step="0.01"></div>
-      <div><label>Frais fixe par chauffeur ($)</label><input id="fixedFee" type="number" value="60" step="0.01"></div>
+      <div><label>Frais par jour travaillé ($)</label><input id="fixedFee" type="number" value="60" step="0.01"></div>
       <div><label>Mode calcul</label><select id="calcMode"><option value="invoice">Sur Total invoice</option><option value="subtotal">Sur sous-total avant frais Intelcom</option></select></div>
       <div><label>Titre du PDF</label><input id="pdfTitle" value="FACTURE"></div>
       <div><label>Détails colis dans PDF</label><select id="includeParcelDetails"><option value="yes">Oui</option><option value="no">Non</option></select></div>
@@ -56,7 +56,7 @@ G2G 1B8</textarea>
   <div class="grid">
     <div class="stat">Total Intelcom<b id="totalIntelcom">0.00 $</b></div>
     <div class="stat">Commission broker<b id="totalCommission">0.00 $</b></div>
-    <div class="stat">Frais fixes<b id="totalFees">0.00 $</b></div>
+    <div class="stat">Frais jours travaillés<b id="totalFees">0.00 $</b></div>
     <div class="stat">Total chauffeurs<b id="totalDrivers">0.00 $</b></div>
   </div>
 
@@ -235,9 +235,11 @@ async function importPDFs(){
 }
 function calc(d){
   const base = byId('calcMode').value==='subtotal'?d.subtotal:d.invoice;
-  const rate=Number(byId('commission').value)||0, fee=Number(byId('fixedFee').value)||0;
+  const rate=Number(byId('commission').value)||0, feePerDay=Number(byId('fixedFee').value)||0;
+  const workedDays=(d.dayRows||[]).filter(r => (Number(r.parcels)||0)>0 || (Number(r.amount)||0)>0).length;
+  const fee=workedDays*feePerDay;
   const commission=base*rate/100, net=base-commission-fee-(Number(d.deduction)||0)-(Number(d.advance)||0);
-  return {base,commission,fee,net};
+  return {base,commission,fee,net,workedDays,feePerDay};
 }
 function updateDriver(i,k,v){drivers[i][k]=v; const d=drivers[i]; if(k.startsWith('driver')) localStorage.setItem('driverInfo_'+(d.driverCode||d.driverName), JSON.stringify({driverId:d.driverId,driverAddress:d.driverAddress,driverEmail:d.driverEmail,driverPhone:d.driverPhone})); saveAll(); render();}
 function render(){
@@ -251,7 +253,7 @@ function render(){
         <label>Adresse</label><input value="${d.driverAddress||''}" onchange="updateDriver(${i},'driverAddress',this.value)">
         <label>Email / téléphone</label><input value="${d.driverEmail||''}" placeholder="email" onchange="updateDriver(${i},'driverEmail',this.value)"><input value="${d.driverPhone||''}" placeholder="téléphone" onchange="updateDriver(${i},'driverPhone',this.value)">
       </td>
-      <td>${d.from} au ${d.to}<br><span class="small">Semaine ${d.week}<br>Station ${d.station||''}<br>Détails colis ${d.parcelDetails?d.parcelDetails.length:0}</span></td><td>${d.parcels}</td><td>${money(c.base)}</td><td>${money(c.commission)}</td><td>${money(c.fee)}</td>
+      <td>${d.from} au ${d.to}<br><span class="small">Semaine ${d.week}<br>Station ${d.station||''}<br>Jours travaillés ${c.workedDays||0}<br>Détails colis ${d.parcelDetails?d.parcelDetails.length:0}</span></td><td>${d.parcels}</td><td>${money(c.base)}</td><td>${money(c.commission)}</td><td>${money(c.fee)}</td>
       <td><input type="number" value="${d.deduction}" onchange="drivers[${i}].deduction=Number(this.value);saveAll();render()"></td><td><input type="number" value="${d.advance}" onchange="drivers[${i}].advance=Number(this.value);saveAll();render()"></td><td><b>${money(c.net)}</b></td><td><button onclick="downloadOne(${i})">PDF</button><button class="danger" onclick="removeDriver(${i})">X</button></td></tr>`;
   });
   byId('totalIntelcom').textContent=money(ti);byId('totalCommission').textContent=money(tc);byId('totalFees').textContent=money(tf);byId('totalDrivers').textContent=money(td);
@@ -266,7 +268,7 @@ function buildPdf(d){
   doc.text(d.driverName||'',130,78); doc.text('Code : '+(d.driverCode||''),130,85); if(d.driverId)doc.text('ID : '+d.driverId,130,92); if(d.driverAddress)doc.text(d.driverAddress,130,99); if(d.driverEmail)doc.text(d.driverEmail,130,106); if(d.driverPhone)doc.text(d.driverPhone,130,113);
   let y=128; doc.setFillColor(20,20,20); doc.setTextColor(255); doc.rect(20,y,170,10,'F'); doc.text('DATES',28,y+7); doc.text('COLIS',78,y+7); doc.text('MONTANT',145,y+7); doc.setTextColor(0); y+=16;
   const rows=(d.dayRows&&d.dayRows.length?d.dayRows:[{date:d.from,parcels:d.parcels,amount:c.base}]); rows.slice(0,9).forEach(r=>{doc.text(String(r.date),25,y); doc.text(String(r.parcels),83,y); doc.text(money(r.amount),145,y); y+=8;});
-  y+=8; doc.text('Sous total Intelcom : '+money(c.base),115,y); y+=8; doc.text('Commission broker : '+money(c.commission),115,y); y+=8; doc.text('Frais broker : '+money(c.fee),115,y); y+=8; doc.text('Déduction : '+money(d.deduction),115,y); y+=8; doc.text('Avance : '+money(d.advance),115,y); y+=10; doc.setFillColor(20,20,20); doc.setTextColor(255); doc.rect(105,y,85,12,'F'); doc.text('TOTAL : '+money(c.net),125,y+8); doc.setTextColor(0);
+  y+=8; doc.text('Sous total Intelcom : '+money(c.base),115,y); y+=8; doc.text('Commission broker : '+money(c.commission),115,y); y+=8; doc.text('Jours travaillés : '+String(c.workedDays||0),115,y); y+=8; doc.text('Frais broker ('+String(c.workedDays||0)+' × '+money(c.feePerDay||0)+') : '+money(c.fee),115,y); y+=8; doc.text('Déduction : '+money(d.deduction),115,y); y+=8; doc.text('Avance : '+money(d.advance),115,y); y+=10; doc.setFillColor(20,20,20); doc.setTextColor(255); doc.rect(105,y,85,12,'F'); doc.text('TOTAL : '+money(c.net),125,y+8); doc.setTextColor(0);
   doc.setFontSize(9); doc.text('Paiement à l’ordre de : '+(broker.payTo||''),20,255); doc.text('Règlement : '+(broker.paymentMethod||''),20,263); doc.text((broker.brokerEmail||''),120,255); doc.text((broker.brokerPhone||''),120,263); doc.line(20,270,190,270); doc.setFontSize(10); doc.text('MERCI DE VOTRE CONFIANCE',75,282);
 
   if((broker.includeParcelDetails||'yes')==='yes' && d.parcelDetails && d.parcelDetails.length){
