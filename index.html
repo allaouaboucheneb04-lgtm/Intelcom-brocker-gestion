@@ -8,13 +8,13 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
-    body{font-family:Arial,sans-serif;background:#f4f4f4;margin:0;color:#111}.wrap{max-width:1250px;margin:auto;padding:22px}h1{margin:0 0 10px}.card{background:#fff;border-radius:14px;padding:18px;margin:14px 0;box-shadow:0 2px 10px #0001}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.stat{background:#111;color:white;border-radius:12px;padding:14px}.stat b{font-size:22px;display:block;margin-top:6px}label{font-weight:bold;font-size:13px}input,select,textarea{width:100%;padding:10px;margin-top:6px;border:1px solid #ccc;border-radius:8px;box-sizing:border-box}textarea{min-height:70px}button{background:#111;color:white;border:0;border-radius:10px;padding:11px 14px;cursor:pointer;margin:5px 5px 5px 0}button.secondary{background:#555}button.danger{background:#a11}table{width:100%;border-collapse:collapse;background:white}th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;font-size:13px;vertical-align:top}th{background:#111;color:white}.small{font-size:12px;color:#666}.mini{width:90px}.nameinput{min-width:190px}.warn{color:#b36b00;font-weight:bold}@media(max-width:900px){.grid,.grid3{grid-template-columns:1fr}table{font-size:12px;display:block;overflow:auto}th,td{padding:6px}}
+    body{font-family:Arial,sans-serif;background:#f4f4f4;margin:0;color:#111}.wrap{max-width:1250px;margin:auto;padding:22px}h1{margin:0 0 10px}.card{background:#fff;border-radius:14px;padding:18px;margin:14px 0;box-shadow:0 2px 10px #0001}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.stat{background:#111;color:white;border-radius:12px;padding:14px}.stat b{font-size:22px;display:block;margin-top:6px}label{font-weight:bold;font-size:13px}input,select,textarea{width:100%;padding:10px;margin-top:6px;border:1px solid #ccc;border-radius:8px;box-sizing:border-box}textarea{min-height:70px}button{background:#111;color:white;border:0;border-radius:10px;padding:11px 14px;cursor:pointer;margin:5px 5px 5px 0}button.secondary{background:#555}button.danger{background:#a11}table{width:100%;border-collapse:collapse;background:white}th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;font-size:13px;vertical-align:top}th{background:#111;color:white}.small{font-size:12px;color:#666}.mini{width:90px}.nameinput{min-width:190px}.warn{color:#b36b00;font-weight:bold}.bracketBox{border:1px solid #ddd;border-radius:12px;padding:10px;margin:10px 0;background:#fafafa}.bracketTitle{font-weight:bold;margin-bottom:6px}.bracketRow{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin:6px 0}.pill{display:inline-block;background:#eee;border-radius:20px;padding:4px 8px;font-size:12px;margin-top:4px}.feeTop{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.feeSummary{background:#f6f6f6;border:1px solid #ddd;border-radius:12px;padding:12px;margin-top:12px}.hidden{display:none!important}.softBtn{background:#eee;color:#111;border:1px solid #ccc}@media(max-width:900px){.grid,.grid3{grid-template-columns:1fr}table{font-size:12px;display:block;overflow:auto}th,td{padding:6px}}
   </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Relevés chauffeurs Intelcom</h1>
-  <div class="small">Importe plusieurs PDF Intelcom. L’app détecte le chauffeur, la période, les montants, puis génère un relevé par chauffeur.</div>
+  <div class="small">Importe plusieurs PDF Intelcom. L’app détecte le chauffeur, la période, les montants, puis génère un relevé par chauffeur. V10 : véhicule choisi par journée + barème par colis.</div>
 
   <div class="card">
     <h3>Informations broker / compagnie</h3>
@@ -35,11 +35,13 @@ G2G 1B8</textarea>
     <h3>Paramètres de calcul</h3>
     <div class="grid">
       <div><label>Commission broker (%)</label><input id="commission" type="number" value="25" step="0.01"></div>
-      <div><label>Frais par jour travaillé ($)</label><input id="fixedFee" type="number" value="60" step="0.01"></div>
-      <div><label>Mode calcul</label><select id="calcMode"><option value="invoice">Sur Total invoice</option><option value="subtotal">Sur sous-total avant frais Intelcom</option></select></div>
-      <div><label>Titre du PDF</label><input id="pdfTitle" value="FACTURE"></div>
+      <div><label>Mode frais broker</label><select id="feeMode" onchange="renderFeeSettings();saveAll();render()"><option value="daily_fixed">Frais fixe par jour travaillé</option><option value="bracket_daily">Barème par colis</option></select></div>
+      <div id="fixedFeeWrap"><label>Frais fixe par jour travaillé ($)</label><input id="fixedFee" type="number" value="60" step="0.01"></div>
+      <div><label>Mode calcul commission</label><select id="calcMode"><option value="invoice">Sur Total invoice</option><option value="subtotal">Sur sous-total avant frais Intelcom</option></select></div>
       <div><label>Détails colis dans PDF</label><select id="includeParcelDetails"><option value="yes">Oui</option><option value="no">Non</option></select></div>
     </div>
+    <div id="feeSettings" style="margin-top:15px"></div>
+    <div class="small">Pour les barèmes : le broker choisit les intervalles comme il veut, séparément pour Essence, Électrique, Hybride et Diesel.</div>
   </div>
 
   <div class="card">
@@ -47,7 +49,7 @@ G2G 1B8</textarea>
     <input id="pdfFiles" type="file" multiple accept="application/pdf">
     <div class="small">Maximum : 40 fichiers PDF à la fois.</div>
     <button onclick="importPDFs()">Importer et lire</button>
-    <button class="secondary" onclick="saveAll()">Sauvegarder</button>
+    <button class="secondary" onclick="saveAndHideBrackets()">Sauvegarder</button>
     <button class="danger" onclick="clearData()">Vider</button>
     <div id="status" class="small"></div>
     <div class="small warn">Note : Intelcom donne normalement le code + nom du chauffeur. L’adresse, email et ID du chauffeur ne sont pas dans le PDF Intelcom, donc tu les ajoutes une fois ici; l’app les garde en mémoire pour la prochaine fois.</div>
@@ -56,7 +58,7 @@ G2G 1B8</textarea>
   <div class="grid">
     <div class="stat">Total Intelcom<b id="totalIntelcom">0.00 $</b></div>
     <div class="stat">Commission broker<b id="totalCommission">0.00 $</b></div>
-    <div class="stat">Frais jours travaillés<b id="totalFees">0.00 $</b></div>
+    <div class="stat">Frais broker<b id="totalFees">0.00 $</b></div>
     <div class="stat">Total chauffeurs<b id="totalDrivers">0.00 $</b></div>
   </div>
 
@@ -75,10 +77,31 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 let drivers = JSON.parse(localStorage.getItem('intelcomDriversBatchV2') || '[]');
 let broker = JSON.parse(localStorage.getItem('intelcomBrokerV2') || '{}');
 const money = n => (Number(n)||0).toFixed(2)+' $';
+const VEHICLES = ['essence','electrique','hybride','diesel'];
+const VEHICLE_LABELS = {essence:'Essence', electrique:'Électrique', hybride:'Hybride', diesel:'Diesel'};
+function defaultBrackets(){return {
+  essence:[{min:0,max:100,fee:50},{min:101,max:200,fee:70},{min:201,max:9999,fee:95}],
+  electrique:[{min:0,max:100,fee:35},{min:101,max:200,fee:55},{min:201,max:9999,fee:75}],
+  hybride:[{min:0,max:100,fee:45},{min:101,max:200,fee:65},{min:201,max:9999,fee:85}],
+  diesel:[{min:0,max:100,fee:55},{min:101,max:200,fee:75},{min:201,max:9999,fee:100}]
+};}
+function getBrackets(){
+  if(!broker.brackets) broker.brackets = defaultBrackets();
+  VEHICLES.forEach(v=>{ if(!broker.brackets[v]) broker.brackets[v]=[]; });
+  return broker.brackets;
+}
+function findBracketFee(vehicle, parcels){
+  const list=(getBrackets()[vehicle]||[]).map(r=>({min:Number(r.min)||0,max:Number(r.max)||0,fee:Number(r.fee)||0}));
+  const p=Number(parcels)||0;
+  const row=list.find(r=>p>=r.min && p<=r.max);
+  return row ? {fee:row.fee, label:row.min+'-'+row.max} : {fee:0, label:'aucune tranche'};
+}
+function feeModeLabel(mode){ return ({daily_fixed:'Frais fixe par jour travaillé', bracket_daily:'Barème par colis'})[mode] || mode; }
+
 function parseMoney(s){return Number(String(s||'').replace(/[^0-9.-]/g,''))||0}
 function byId(id){return document.getElementById(id)}
-function loadBroker(){['brokerCompany','brokerStation','payTo','brokerEmail','brokerPhone','paymentMethod','brokerAddress','commission','fixedFee','calcMode','pdfTitle','includeParcelDetails'].forEach(id=>{if(broker[id]!==undefined)byId(id).value=broker[id]})}
-function collectBroker(){['brokerCompany','brokerStation','payTo','brokerEmail','brokerPhone','paymentMethod','brokerAddress','commission','fixedFee','calcMode','pdfTitle','includeParcelDetails'].forEach(id=>broker[id]=byId(id).value)}
+function loadBroker(){ if(broker.showBrackets===undefined) broker.showBrackets=false; ['brokerCompany','brokerStation','payTo','brokerEmail','brokerPhone','paymentMethod','brokerAddress','commission','feeMode','fixedFee','calcMode','includeParcelDetails'].forEach(id=>{if(broker[id]!==undefined)byId(id).value=broker[id]})}
+function collectBroker(){['brokerCompany','brokerStation','payTo','brokerEmail','brokerPhone','paymentMethod','brokerAddress','commission','feeMode','fixedFee','calcMode','includeParcelDetails'].forEach(id=>broker[id]=byId(id).value)}
 async function pdfText(file){
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({data:buf}).promise;
@@ -200,8 +223,68 @@ function extractIntelcom(text, fileName){
     }
   }
   const saved = JSON.parse(localStorage.getItem('driverInfo_'+(driverCode||driverName)) || '{}');
+  dayRows.forEach(r=>{ if(!r.vehicle) r.vehicle = saved.defaultVehicle || 'essence'; });
   return {id:Date.now()+Math.random(), fileName, driverCode, driverName, driverId:saved.driverId||'', driverAddress:saved.driverAddress||'', driverEmail:saved.driverEmail||'', driverPhone:saved.driverPhone||'', week, from, to, station, parcels, subtotal, fsc, invoice, deduction:0, advance:0, dayRows, parcelDetails};
 }
+function summarizeBrackets(){
+  const br=getBrackets();
+  let html='<div class="feeSummary"><b>Résumé des barèmes enregistrés</b>';
+  VEHICLES.forEach(v=>{
+    const rows=(br[v]||[]).map(r=>`${r.min}-${r.max} colis = ${money(r.fee)}`).join(' • ');
+    html+=`<div class="small" style="margin-top:6px"><b>${VEHICLE_LABELS[v]} :</b> ${rows || 'Aucune tranche'}</div>`;
+  });
+  html+='</div>';
+  return html;
+}
+function toggleBrackets(show){
+  collectBroker();
+  broker.showBrackets = !!show;
+  localStorage.setItem('intelcomBrokerV2',JSON.stringify(broker));
+  renderFeeSettings();
+}
+function saveAndHideBrackets(){
+  collectBroker();
+  broker.showBrackets=false;
+  localStorage.setItem('intelcomBrokerV2',JSON.stringify(broker));
+  renderFeeSettings();
+  render();
+}
+function updateFeeModeUI(){
+  const mode=byId('feeMode').value;
+  const fixedWrap=byId('fixedFeeWrap');
+  if(fixedWrap) fixedWrap.classList.toggle('hidden', mode!=='daily_fixed');
+}
+function renderFeeSettings(){
+  const el=byId('feeSettings'); if(!el) return;
+  collectBroker();
+  updateFeeModeUI();
+  const mode=byId('feeMode').value;
+  if(mode==='daily_fixed'){
+    el.innerHTML='<div class="small">Le frais fixe est appliqué seulement aux journées travaillées : colis > 0 ou montant > 0. Aucune charge sur les journées à 0 colis.</div>';
+    return;
+  }
+  const visible = broker.showBrackets === true;
+  let html='<div class="feeTop"><button class="softBtn" onclick="toggleBrackets('+(!visible)+')">'+(visible?'Masquer les barèmes':'Afficher / modifier les barèmes')+'</button>';
+  if(visible) html+='<button onclick="saveAndHideBrackets()">Enregistrer les barèmes</button>';
+  html+='</div>';
+  if(!visible){
+    html += summarizeBrackets();
+    el.innerHTML=html;
+    return;
+  }
+  const br=getBrackets();
+  html+='<h4>Barème par colis — personnalisable par type de véhicule</h4>';
+  html+='<div class="small">Le véhicule se choisit pour chaque journée dans le tableau des chauffeurs. Exemple : lundi essence, mardi électrique. L’app applique la tranche selon les colis de cette journée.</div>';
+  VEHICLES.forEach(v=>{
+    html+=`<div class="bracketBox"><div class="bracketTitle">${VEHICLE_LABELS[v]}</div>`;
+    html+=(br[v]||[]).map((r,idx)=>`<div class="bracketRow"><input type="number" value="${r.min}" placeholder="Min colis" onchange="setBracket('${v}',${idx},'min',this.value)"><input type="number" value="${r.max}" placeholder="Max colis" onchange="setBracket('${v}',${idx},'max',this.value)"><input type="number" value="${r.fee}" placeholder="Frais $" step="0.01" onchange="setBracket('${v}',${idx},'fee',this.value)"><button class="danger" onclick="removeBracket('${v}',${idx})">X</button></div>`).join('');
+    html+=`<button class="secondary" onclick="addBracket('${v}')">+ Ajouter une tranche ${VEHICLE_LABELS[v]}</button></div>`;
+  });
+  el.innerHTML=html;
+}
+function setBracket(vehicle, idx, key, value){ collectBroker(); const br=getBrackets(); br[vehicle][idx][key]=Number(value)||0; saveAll(); render(); }
+function addBracket(vehicle){ collectBroker(); const br=getBrackets(); br[vehicle].push({min:0,max:0,fee:0}); saveAll(); renderFeeSettings(); render(); }
+function removeBracket(vehicle, idx){ collectBroker(); const br=getBrackets(); br[vehicle].splice(idx,1); saveAll(); renderFeeSettings(); render(); }
 async function importPDFs(){
   const files=[...byId('pdfFiles').files];
   if(!files.length) return alert('Choisis au moins un PDF.');
@@ -235,16 +318,33 @@ async function importPDFs(){
 }
 function calc(d){
   const base = byId('calcMode').value==='subtotal'?d.subtotal:d.invoice;
-  const rate=Number(byId('commission').value)||0, feePerDay=Number(byId('fixedFee').value)||0;
-  const workedDays=(d.dayRows||[]).filter(r => (Number(r.parcels)||0)>0 || (Number(r.amount)||0)>0).length;
-  const fee=workedDays*feePerDay;
+  const rate=Number(byId('commission').value)||0, fixedFee=Number(byId('fixedFee').value)||0;
+  const mode=byId('feeMode') ? byId('feeMode').value : 'daily_fixed';
+  const workedRows=(d.dayRows||[]).filter(r => (Number(r.parcels)||0)>0 || (Number(r.amount)||0)>0);
+  const workedDays=workedRows.length;
+  let fee=0, feeDetails=[];
+  if(mode==='daily_fixed'){
+    workedRows.forEach(r=>{ fee += fixedFee; feeDetails.push({date:r.date, parcels:r.parcels, vehicle:r.vehicle||'essence', bracket:'fixe jour', amount:fixedFee}); });
+  }else if(mode==='bracket_daily'){
+    workedRows.forEach(r=>{ const vehicle=r.vehicle||'essence'; const b=findBracketFee(vehicle, r.parcels); fee += b.fee; feeDetails.push({date:r.date, parcels:r.parcels, vehicle, bracket:b.label, amount:b.fee}); });
+  }
   const commission=base*rate/100, net=base-commission-fee-(Number(d.deduction)||0)-(Number(d.advance)||0);
-  return {base,commission,fee,net,workedDays,feePerDay};
+  return {base,commission,fee,net,workedDays,feePerDay:fixedFee,mode,feeDetails};
 }
-function updateDriver(i,k,v){drivers[i][k]=v; const d=drivers[i]; if(k.startsWith('driver')) localStorage.setItem('driverInfo_'+(d.driverCode||d.driverName), JSON.stringify({driverId:d.driverId,driverAddress:d.driverAddress,driverEmail:d.driverEmail,driverPhone:d.driverPhone})); saveAll(); render();}
+function updateDriver(i,k,v){drivers[i][k]=v; const d=drivers[i]; if(k.startsWith('driver')) localStorage.setItem('driverInfo_'+(d.driverCode||d.driverName), JSON.stringify({driverId:d.driverId,driverAddress:d.driverAddress,driverEmail:d.driverEmail,driverPhone:d.driverPhone,defaultVehicle:'essence'})); saveAll(); render();}
+function updateDayVehicle(i, ri, vehicle){ if(drivers[i] && drivers[i].dayRows && drivers[i].dayRows[ri]){ drivers[i].dayRows[ri].vehicle=vehicle; saveAll(); render(); }}
 function render(){
   const body=byId('driversBody'); body.innerHTML=''; let ti=0,tc=0,tf=0,td=0;
   drivers.forEach((d,i)=>{const c=calc(d); ti+=c.base; tc+=c.commission; tf+=c.fee; td+=c.net;
+    const dayEditor = (d.dayRows||[]).map((r,ri)=>{
+      const disabled = ((Number(r.parcels)||0)<=0 && (Number(r.amount)||0)<=0);
+      return `<div style="display:grid;grid-template-columns:95px 55px 110px;gap:5px;align-items:center;margin:3px 0;font-size:12px">
+        <span>${r.date}</span><span>${r.parcels} colis</span>
+        <select ${disabled?'disabled':''} onchange="updateDayVehicle(${i},${ri},this.value)">
+          ${VEHICLES.map(v=>`<option value="${v}" ${(r.vehicle||'essence')===v?'selected':''}>${VEHICLE_LABELS[v]}</option>`).join('')}
+        </select>
+      </div>`;
+    }).join('');
     body.innerHTML+=`<tr>
       <td>
         <label>Code</label><input class="mini" value="${d.driverCode||''}" onchange="updateDriver(${i},'driverCode',this.value)">
@@ -252,15 +352,16 @@ function render(){
         <label>ID</label><input value="${d.driverId||''}" onchange="updateDriver(${i},'driverId',this.value)">
         <label>Adresse</label><input value="${d.driverAddress||''}" onchange="updateDriver(${i},'driverAddress',this.value)">
         <label>Email / téléphone</label><input value="${d.driverEmail||''}" placeholder="email" onchange="updateDriver(${i},'driverEmail',this.value)"><input value="${d.driverPhone||''}" placeholder="téléphone" onchange="updateDriver(${i},'driverPhone',this.value)">
+        <div class="pill">Véhicule par journée ci-dessous</div>
       </td>
-      <td>${d.from} au ${d.to}<br><span class="small">Semaine ${d.week}<br>Station ${d.station||''}<br>Jours travaillés ${c.workedDays||0}<br>Détails colis ${d.parcelDetails?d.parcelDetails.length:0}</span></td><td>${d.parcels}</td><td>${money(c.base)}</td><td>${money(c.commission)}</td><td>${money(c.fee)}</td>
+      <td>${d.from} au ${d.to}<br><span class="small">Semaine ${d.week}<br>Station ${d.station||''}<br>Jours travaillés ${c.workedDays||0}<br>Détails colis ${d.parcelDetails?d.parcelDetails.length:0}</span><hr>${dayEditor}</td><td>${d.parcels}</td><td>${money(c.base)}</td><td>${money(c.commission)}</td><td>${money(c.fee)}</td>
       <td><input type="number" value="${d.deduction}" onchange="drivers[${i}].deduction=Number(this.value);saveAll();render()"></td><td><input type="number" value="${d.advance}" onchange="drivers[${i}].advance=Number(this.value);saveAll();render()"></td><td><b>${money(c.net)}</b></td><td><button onclick="downloadOne(${i})">PDF</button><button class="danger" onclick="removeDriver(${i})">X</button></td></tr>`;
   });
   byId('totalIntelcom').textContent=money(ti);byId('totalCommission').textContent=money(tc);byId('totalFees').textContent=money(tf);byId('totalDrivers').textContent=money(td);
 }
 function buildPdf(d){
   const {jsPDF}=window.jspdf; const doc=new jsPDF(); const c=calc(d); collectBroker();
-  doc.setFontSize(34); doc.text(broker.pdfTitle||'FACTURE',20,25); doc.setFontSize(10); doc.text('Fait le '+new Date().toLocaleDateString('fr-CA'),20,38); doc.text('Période de paie : '+d.from+' au '+d.to,20,47);
+  const autoTitle=(d.driverName||d.driverCode||'Chauffeur')+' - Semaine '+(d.week||''); doc.setFontSize(22); doc.text(autoTitle,20,25); doc.setFontSize(10); doc.text('Fait le '+new Date().toLocaleDateString('fr-CA'),20,38); doc.text('Période de paie : '+d.from+' au '+d.to,20,47);
   doc.line(20,58,190,58); doc.setFontSize(11);
   doc.setFont(undefined,'bold'); doc.text((broker.brokerStation||'').toUpperCase(),20,70); doc.setFont(undefined,'normal');
   doc.text(broker.brokerCompany||'',20,78); (broker.brokerAddress||'').split('\n').forEach((l,idx)=>doc.text(l,20,86+idx*7));
@@ -268,8 +369,19 @@ function buildPdf(d){
   doc.text(d.driverName||'',130,78); doc.text('Code : '+(d.driverCode||''),130,85); if(d.driverId)doc.text('ID : '+d.driverId,130,92); if(d.driverAddress)doc.text(d.driverAddress,130,99); if(d.driverEmail)doc.text(d.driverEmail,130,106); if(d.driverPhone)doc.text(d.driverPhone,130,113);
   let y=128; doc.setFillColor(20,20,20); doc.setTextColor(255); doc.rect(20,y,170,10,'F'); doc.text('DATES',28,y+7); doc.text('COLIS',78,y+7); doc.text('MONTANT',145,y+7); doc.setTextColor(0); y+=16;
   const rows=(d.dayRows&&d.dayRows.length?d.dayRows:[{date:d.from,parcels:d.parcels,amount:c.base}]); rows.slice(0,9).forEach(r=>{doc.text(String(r.date),25,y); doc.text(String(r.parcels),83,y); doc.text(money(r.amount),145,y); y+=8;});
-  y+=8; doc.text('Sous total Intelcom : '+money(c.base),115,y); y+=8; doc.text('Commission broker : '+money(c.commission),115,y); y+=8; doc.text('Jours travaillés : '+String(c.workedDays||0),115,y); y+=8; doc.text('Frais broker ('+String(c.workedDays||0)+' × '+money(c.feePerDay||0)+') : '+money(c.fee),115,y); y+=8; doc.text('Déduction : '+money(d.deduction),115,y); y+=8; doc.text('Avance : '+money(d.advance),115,y); y+=10; doc.setFillColor(20,20,20); doc.setTextColor(255); doc.rect(105,y,85,12,'F'); doc.text('TOTAL : '+money(c.net),125,y+8); doc.setTextColor(0);
+  y+=8; doc.text('Sous total Intelcom : '+money(c.base),115,y); y+=8; doc.text('Commission broker : '+money(c.commission),115,y); y+=8; doc.text('Jours travaillés : '+String(c.workedDays||0),115,y); y+=8; doc.text('Mode frais : '+feeModeLabel(c.mode),115,y); y+=8; doc.text('Frais broker : '+money(c.fee),115,y); y+=8; doc.text('Déduction : '+money(d.deduction),115,y); y+=8; doc.text('Avance : '+money(d.advance),115,y); y+=10; doc.setFillColor(20,20,20); doc.setTextColor(255); doc.rect(105,y,85,12,'F'); doc.text('TOTAL : '+money(c.net),125,y+8); doc.setTextColor(0);
   doc.setFontSize(9); doc.text('Paiement à l’ordre de : '+(broker.payTo||''),20,255); doc.text('Règlement : '+(broker.paymentMethod||''),20,263); doc.text((broker.brokerEmail||''),120,255); doc.text((broker.brokerPhone||''),120,263); doc.line(20,270,190,270); doc.setFontSize(10); doc.text('MERCI DE VOTRE CONFIANCE',75,282);
+
+  if(c.feeDetails && c.feeDetails.length){
+    doc.addPage();
+    doc.setFontSize(16); doc.setFont(undefined,'bold'); doc.text('Détails des frais broker',20,18);
+    doc.setFontSize(10); doc.setFont(undefined,'normal'); doc.text('Mode : '+feeModeLabel(c.mode),20,28); doc.text('Véhicule choisi par journée',20,36);
+    let fy=50; doc.setFillColor(20,20,20); doc.setTextColor(255); doc.rect(20,fy,170,8,'F');
+    doc.text('Date',25,fy+6); doc.text('Colis',57,fy+6); doc.text('Véhicule',78,fy+6); doc.text('Tranche',112,fy+6); doc.text('Frais',165,fy+6);
+    doc.setTextColor(0); fy+=15;
+    c.feeDetails.forEach(r=>{ if(fy>270){doc.addPage(); fy=20;} doc.text(String(r.date||''),25,fy); doc.text(String(r.parcels||0),57,fy); doc.text(String(VEHICLE_LABELS[r.vehicle]||r.vehicle||''),78,fy); doc.text(String(r.bracket||''),112,fy); doc.text(money(r.amount),165,fy); fy+=8; });
+    fy+=8; doc.setFont(undefined,'bold'); doc.text('Frais broker total : '+money(c.fee),115,fy); doc.setFont(undefined,'normal');
+  }
 
   if((broker.includeParcelDetails||'yes')==='yes' && d.parcelDetails && d.parcelDetails.length){
     const rows = d.parcelDetails;
@@ -301,14 +413,16 @@ function buildPdf(d){
   }
   return doc;
 }
-function downloadOne(i){const n=(drivers[i].driverName||drivers[i].driverCode||'chauffeur').replace(/[^a-z0-9]/gi,'_'); buildPdf(drivers[i]).save('releve_'+n+'.pdf')}
+function cleanFileName(x){return String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9 _-]/g,'').trim().replace(/\s+/g,' ')}
+function pdfFileName(d){const name=cleanFileName(d.driverName||d.driverCode||'Chauffeur'); const week=cleanFileName(d.week||'Semaine'); return `${name} - Semaine ${week}.pdf`; }
+function downloadOne(i){buildPdf(drivers[i]).save(pdfFileName(drivers[i]))}
 async function generateAllZip(){ if(!drivers.length)return alert('Aucun chauffeur.'); const zip=new JSZip(); drivers.forEach(d=>{const pdf=buildPdf(d).output('blob'); const n=(d.driverName||d.driverCode||'chauffeur').replace(/[^a-z0-9]/gi,'_'); zip.file('releve_'+n+'.pdf',pdf);}); const blob=await zip.generateAsync({type:'blob'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='releves_chauffeurs.zip'; a.click(); }
-function exportCSV(){let csv='Code,Chauffeur,ID,Adresse,Email,Telephone,Periode,Colis,Total Intelcom,Commission,Frais,Deduction,Avance,Net,Details colis\n'; drivers.forEach(d=>{const c=calc(d);csv+=`"${d.driverCode}","${d.driverName}","${d.driverId}","${d.driverAddress}","${d.driverEmail}","${d.driverPhone}","${d.from} au ${d.to}",${d.parcels},${c.base.toFixed(2)},${c.commission.toFixed(2)},${c.fee.toFixed(2)},${d.deduction},${d.advance},${c.net.toFixed(2)},${d.parcelDetails?d.parcelDetails.length:0}\n`;}); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='resume_broker.csv'; a.click();}
+function exportCSV(){let csv='Code,Chauffeur,Vehicule,Mode frais,ID,Adresse,Email,Telephone,Periode,Colis,Total Intelcom,Commission,Frais,Deduction,Avance,Net,Details colis\n'; drivers.forEach(d=>{const c=calc(d);csv+=`"${d.driverCode}","${d.driverName}","Par journée","${feeModeLabel(c.mode)}","${d.driverId}","${d.driverAddress}","${d.driverEmail}","${d.driverPhone}","${d.from} au ${d.to}",${d.parcels},${c.base.toFixed(2)},${c.commission.toFixed(2)},${c.fee.toFixed(2)},${d.deduction},${d.advance},${c.net.toFixed(2)},${d.parcelDetails?d.parcelDetails.length:0}\n`;}); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='resume_broker.csv'; a.click();}
 function saveAll(){collectBroker(); localStorage.setItem('intelcomDriversBatchV2',JSON.stringify(drivers)); localStorage.setItem('intelcomBrokerV2',JSON.stringify(broker));}
 function clearData(){if(confirm('Vider tous les chauffeurs?')){drivers=[];saveAll();render();}}
 function removeDriver(i){drivers.splice(i,1);saveAll();render();}
-['brokerCompany','brokerStation','payTo','brokerEmail','brokerPhone','paymentMethod','brokerAddress','commission','fixedFee','calcMode','pdfTitle','includeParcelDetails'].forEach(id=>{byId(id).onchange=()=>{saveAll();render();}});
-loadBroker(); render();
+['brokerCompany','brokerStation','payTo','brokerEmail','brokerPhone','paymentMethod','brokerAddress','commission','feeMode','fixedFee','calcMode','includeParcelDetails'].forEach(id=>{byId(id).onchange=()=>{saveAll(); if(id==='feeMode') renderFeeSettings(); render();}});
+loadBroker(); renderFeeSettings(); render();
 </script>
 </body>
 </html>
